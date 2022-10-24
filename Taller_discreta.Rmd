@@ -1,0 +1,128 @@
+---
+title: 'Econometría: Taller Discreta'
+author: "Gial Manzur y Jacob Sanjuan"
+output: pdf_document 
+  
+---
+
+La pandemia ha tenido efectos adversos sobre el mercado laboral, aunque no afectó a todos los grupos poblacionales por igual. Se ha afirmado que el efecto fue especialmente fuerte para las personas con menores niveles de educación formal. Así, la pregunta ha responder es ¿La pandemia afectó de manera negativa y más fuerte a la población de bajo nivel educativo que a la de mayor nivel educativo? Para ello, su variable de resultado es el estatus de ocupación de la persona.
+Plantea el siguiente modelo
+
+$$oc=\beta_0+\beta_1M+\beta_2Edad+\beta_3Q+\beta_4ES+\gamma ES\times Q+e$$
+Donde 
+
+• $oc$ es una dummy que identifica a las personas ocupadas\par
+
+• $M$ es una dummy que identifica a las mujeres
+• Edad es la edad en años
+
+• $Q$ es una dummy que identifica el periodo de cuarentena, abril a septiembre de 2020
+
+• Es es una dummy que toma el valor de 1 si el máximo nivel educativo alcanzado es superior o universitaria, 0 en otro caso.
+
+Usará la base de datos baq1921.dta que est´a disponible acá, la cual contiene información para personas en Barranquilla AM para el periodo 2019-2021. Debe filtrar la base de datos y dejar solo a las personas mayores a 16 años.
+
+**1.** Estime el modelo por MCO, es decir el LPM. Analice los resultados
+
+
+```{r setup, include=FALSE}
+library(haven)
+baq1921 <- read_dta("baq1921.dta")
+library(ggplot2)
+library(lmtest)
+library(sandwich)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(broom)
+library(jtools)
+# Variables para regresión
+
+baq1921<-baq1921%>%mutate(Es=ifelse(p6210==6,1,0),M=ifelse(p6020==2,1,0),fecha=make_date(year=year,month=mes,day=01),Q=ifelse(fecha>"2020-03-01"&fecha<"2020-10-01",1,0))%>%filter(p6040>16)%>%mutate(Edad=p6040)
+```
+
+```{r}
+LPM<-lm(oc~M+Edad+Es+Q+Es*Q,data=baq1921)
+```
+
+```{r echo=FALSE} 
+kable(tidy(LPM), digits=4, align='c',caption=
+  "LPM", col.names=c("","coefficient", "Std. Error", "t-value", "p-value"))
+```
+
+```{r echo=FALSE} 
+bptest(LPM)
+```
+Al hacer el Breusch-Pagan test vemos que el valor p es menor a 0,05 por lo que se rechaza el supuesto de homocedasticidad y se corrige con errores estandares robustos.
+
+```{r}
+LPMr<-coeftest(LPM, vcov = vcovHC(LPM, type="HC1"))
+```
+
+```{r echo=FALSE} 
+kable(tidy(LPMr), digits=4, align='c',caption=
+  "LPM errores estándar robustos", col.names=c("","coefficient", "Robust Std. Error", "t-value", "p-value"))
+```
+
+las probabilidades de tener educación superior y estar ocupado pasan de 5.9 p.p. a 2.9 p.p. mientras que al no tener educación superior tus posibilidades de estar ocupado se disminuyen en un 9.8 p.p.
+
+**2.** Estime el modelo logit y el modelo probit. Analice los resultados
+
+
+**Logit**
+```{r}
+Logit<-glm(oc~M+Edad+Es+Q+Es*Q,family="binomial",data=baq1921)
+```
+
+```{r echo=FALSE} 
+kable(tidy(Logit), digits=4, align='c',caption=
+  "Logit", col.names=c("","coefficient", "Std. Error", "z-value", "p-value"))
+```
+
+
+**Probit**
+```{r}
+Probit<-glm(oc~M+Edad+Es+Q+Es*Q,family=binomial(link = "probit"),data=baq1921)
+```
+
+```{r echo=FALSE} 
+kable(tidy(Probit), digits=4, align='c',caption=
+  "Probit", col.names=c("","coefficient", "Std. Error", "z-value", "p-value"))
+```
+Tanto haciendo la regresión con LPM, Logit y Probit se puede ver que la pandemia si afectó de manera más fuerte a aquellos que no tenían una educación superior.al tener educación superior las probabilidades de estar ocupados bajan un poco con la pandemia, pero se mantienen positivas. mientras que las probabilidades al no tener educación superior durante la pandemia son negativas.
+
+**3.** Para cada modelo calcule la probabilidad de estar ocupado de una mujer de 35 a˜nos con educación universitaria antes de la cuarentena y durante
+la cuarentena. Compare con una mujer similar pero con educación menor a superior
+
+Mostraremos los datos de las predicciones en tres regresiones, LPM con errores estándares robustos, Logit y probit.
+
+
+```{r echo=FALSE, warning =FALSE}
+pred<-data_frame(M=c(1,1,1,1),Edad=c(35,35,35,35),Q=c(0,1,0,1),Es=c(1,1,0,0))
+
+predlpm<-make_predictions(LPM,new_data=pred,outcome.scale = "link",robust ="HC1")
+
+knitr::kable(head(predlpm[, 1:7]),digits = 4,caption = "predicción LPMr")
+```
+
+
+
+```{r echo=FALSE} 
+
+predlogit<-make_predictions(Logit,new_data=pred,outcome.scale = "response")
+
+
+knitr::kable(head(predlogit[, 1:7]),digits = 4, caption = "predicción Logit")
+```
+
+
+
+```{r echo=FALSE} 
+
+predprobit<-make_predictions(Probit,new_data=pred,outcome.scale = "response")
+
+knitr::kable(head(predprobit[, 1:7]),digits = 4, caption = "predicción Probit")
+```
+
+Los tres modelos tienen probabilidades diferentes, pero bastante parecidas. podemos ver en todas que la probabilidad de una mujer con educación universitaria de estar ocupada bajó con la llegada de la pandemia, mientras ocurre lo mismo con la probabilidad de una mujer sin estudios universitarios. sin embargo, para las mujeres que no tienen estudios universitarios tal caída en su probabilidad es un poco más alta, por lo que se puede decir que la pandemia afectó más el empleo de las mujeres que tenían menor nivel educativo.
